@@ -47,14 +47,21 @@ func (e *APIError) Error() string {
 //
 // Symbolic Kind is consulted first so a guard error maps deterministically even
 // with Status 0; HTTP status is the fallback.
-func (e *APIError) ExitCode() int {
-	switch e.Kind {
+func (e *APIError) ExitCode() int { return ExitCodeFor(e.Status, e.Kind) }
+
+// ExitCodeFor is the SINGLE source of truth for the fleet exit-code table. Tools
+// that keep their own error type adopt the standard by having their ExitCode()
+// return ExitCodeFor(status, kind) — so every CLI emits the same $? for the same
+// condition (auth=2, validation=3, not_found=4, rate_limited=5, write_locked=6,
+// async_timeout=7, else 1). Kind wins over status.
+func ExitCodeFor(status int, kind string) int {
+	switch kind {
 	case "write_locked", "deprecated_endpoint", "not_publicly_documented":
 		return 6
 	case "async_timeout":
 		return 7
 	}
-	switch e.Status {
+	switch status {
 	case 401, 403:
 		return 2
 	case 400:

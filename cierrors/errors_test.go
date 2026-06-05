@@ -27,6 +27,25 @@ func TestExitCode(t *testing.T) {
 	}
 }
 
+func TestExitCodeFor(t *testing.T) {
+	// the standalone function tools delegate to
+	cases := []struct {
+		status int
+		kind   string
+		want   int
+	}{
+		{0, "", 1}, {500, "", 1},
+		{401, "", 2}, {403, "", 2},
+		{400, "", 3}, {404, "", 4}, {429, "", 5},
+		{0, "write_locked", 6}, {404, "write_locked", 6}, {0, "async_timeout", 7},
+	}
+	for _, tc := range cases {
+		if got := ExitCodeFor(tc.status, tc.kind); got != tc.want {
+			t.Errorf("ExitCodeFor(%d,%q) = %d, want %d", tc.status, tc.kind, got, tc.want)
+		}
+	}
+}
+
 func TestKindForStatus(t *testing.T) {
 	cases := map[int]string{
 		401: "auth_failed", 403: "forbidden", 400: "validation",
