@@ -46,6 +46,48 @@ func TestCapRows(t *testing.T) {
 	}
 }
 
+func TestCapAgentArray(t *testing.T) {
+	arr := func(n int) []byte {
+		xs := make([]int, n)
+		b, _ := json.Marshal(xs)
+		return b
+	}
+	count := func(b []byte) int {
+		var a []json.RawMessage
+		_ = json.Unmarshal(b, &a)
+		return len(a)
+	}
+
+	t.Setenv("CLAUDECODE", "")
+	// human, no limit -> unbounded (no cap)
+	if got := CapAgentArray(arr(250), 0); count(got) != 250 {
+		t.Errorf("human unbounded should not cap: got %d", count(got))
+	}
+	// explicit limit caps even for human
+	if got := CapAgentArray(arr(250), 10); count(got) != 10 {
+		t.Errorf("explicit limit should cap: got %d", count(got))
+	}
+	// explicit limit larger than data -> no change
+	if got := CapAgentArray(arr(5), 10); count(got) != 5 {
+		t.Errorf("limit>len no-op: got %d", count(got))
+	}
+
+	t.Setenv("CLAUDECODE", "1")
+	// agent, no limit -> AgentRowCap
+	if got := CapAgentArray(arr(250), 0); count(got) != AgentRowCap {
+		t.Errorf("agent default cap: got %d want %d", count(got), AgentRowCap)
+	}
+	// agent with explicit larger limit -> respected
+	if got := CapAgentArray(arr(250), 200); count(got) != 200 {
+		t.Errorf("explicit limit wins over agent cap: got %d", count(got))
+	}
+	// non-array passes through
+	obj := []byte(`{"data":1}`)
+	if got := CapAgentArray(obj, 0); string(got) != string(obj) {
+		t.Errorf("object should pass through: %s", got)
+	}
+}
+
 func TestTruncatedMarker(t *testing.T) {
 	var m map[string]any
 	if err := json.Unmarshal(TruncatedMarker(3, 9), &m); err != nil {

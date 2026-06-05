@@ -4,6 +4,7 @@ package output
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"golang.org/x/term"
@@ -47,4 +48,29 @@ func CapRows[T any](rows []T, limit int) ([]T, bool) {
 func TruncatedMarker(shown, total int) json.RawMessage {
 	b, _ := json.Marshal(map[string]any{"truncated": true, "shown": shown, "total": total})
 	return b
+}
+
+// CapAgentArray is a drop-in for a tool's JSON output chokepoint: if data is a
+// JSON array longer than the effective limit, it returns the first N elements
+// (shape preserved — still an array, so --jq keeps working) and notes the
+// truncation on stderr. The effective limit is ResolveLimit(userLimit): an
+// explicit --limit (>0) always wins, otherwise CLAUDECODE callers get
+// AgentRowCap and humans are unbounded. Non-array data (objects, scalars) and
+// already-small arrays pass through unchanged. Pass the tool's own --limit flag
+// value (0 when unset).
+func CapAgentArray(data []byte, userLimit int) []byte {
+	limit := ResolveLimit(userLimit)
+	if limit <= 0 {
+		return data
+	}
+	var arr []json.RawMessage
+	if json.Unmarshal(data, &arr) != nil || len(arr) <= limit {
+		return data
+	}
+	capped, err := json.Marshal(arr[:limit])
+	if err != nil {
+		return data
+	}
+	fmt.Fprintf(os.Stderr, "note: output capped to %d of %d rows (--limit / CLAUDECODE); pass --limit 0 for all\n", limit, len(arr))
+	return capped
 }
