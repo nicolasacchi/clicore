@@ -5,6 +5,7 @@
 package config
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -57,6 +58,19 @@ func Save(path string, f *File) error { return SaveTOML(path, f) }
 // config.toml that already holds credentials. Accepts any struct, so a tool can
 // keep its own config shape and still get the atomic-write guarantee.
 func SaveTOML(path string, v any) error {
+	var buf bytes.Buffer
+	if err := toml.NewEncoder(&buf).Encode(v); err != nil {
+		return fmt.Errorf("encode config: %w", err)
+	}
+	return WriteFileAtomic(path, buf.Bytes(), 0o600)
+}
+
+// WriteFileAtomic writes data to path atomically: a temp file in the same dir
+// (so os.Rename stays on one filesystem), fsync, then rename over the target.
+// An interrupted or failed write therefore never corrupts a file that already
+// holds data. Use it directly for non-TOML configs (e.g. a JSON credential
+// store); SaveTOML is the TOML convenience built on top.
+func WriteFileAtomic(path string, data []byte, perm os.FileMode) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -68,13 +82,13 @@ func SaveTOML(path string, v any) error {
 	tmpName := tmp.Name()
 	defer func() { _ = os.Remove(tmpName) }() // no-op once renamed
 
-	if err := tmp.Chmod(0o600); err != nil {
+	if err := tmp.Chmod(perm); err != nil {
 		_ = tmp.Close()
 		return err
 	}
-	if err := toml.NewEncoder(tmp).Encode(v); err != nil {
+	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
-		return fmt.Errorf("encode config: %w", err)
+		return err
 	}
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()

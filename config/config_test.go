@@ -97,6 +97,33 @@ func TestSaveTOML_CustomStructAtomic0600(t *testing.T) {
 	}
 }
 
+// TestWriteFileAtomic covers the generic byte-writer used for non-TOML configs
+// (e.g. sgx's JSON store): correct content, 0600, no stray temp.
+func TestWriteFileAtomic(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "sub", "config.json")
+	if err := WriteFileAtomic(path, []byte(`{"k":"v"}`+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != `{"k":"v"}`+"\n" {
+		t.Fatalf("content = %q", got)
+	}
+	st, _ := os.Stat(path)
+	if st.Mode().Perm() != 0o600 {
+		t.Fatalf("perm = %o, want 600", st.Mode().Perm())
+	}
+	ents, _ := os.ReadDir(filepath.Dir(path))
+	for _, e := range ents {
+		if filepath.Ext(e.Name()) == ".tmp" {
+			t.Fatalf("stray temp: %s", e.Name())
+		}
+	}
+}
+
 func TestFirstNonEmpty(t *testing.T) {
 	if got := FirstNonEmpty("", "", "env", "file"); got != "env" {
 		t.Errorf("got %q, want env", got)
