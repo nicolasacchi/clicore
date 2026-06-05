@@ -2,11 +2,34 @@ package httpclient
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 )
+
+func TestShouldRetryNetwork(t *testing.T) {
+	netErr := errors.New("connection reset")
+	cases := []struct {
+		name   string
+		method string
+		err    error
+		want   bool
+	}{
+		{"nil err never retries", http.MethodGet, nil, false},
+		{"GET network err retries", http.MethodGet, netErr, true},
+		{"PUT/DELETE retry", http.MethodDelete, netErr, true},
+		{"POST never retries", http.MethodPost, netErr, false},
+		{"PATCH never retries", http.MethodPatch, netErr, false},
+		{"permanent err never retries (even GET)", http.MethodGet, context.Canceled, false},
+	}
+	for _, tc := range cases {
+		if got := ShouldRetryNetwork(tc.method, tc.err); got != tc.want {
+			t.Errorf("%s: ShouldRetryNetwork(%s) = %v, want %v", tc.name, tc.method, got, tc.want)
+		}
+	}
+}
 
 type noAuth struct{}
 

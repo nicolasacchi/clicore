@@ -148,6 +148,20 @@ func (c *Client) Do(ctx context.Context, method, url string, body []byte, conten
 	return nil, nil, lastErr
 }
 
+// ShouldRetryNetwork reports whether a transport-level error for the given HTTP
+// method may be retried. It encodes the fleet's canonical policy so a tool that
+// keeps its own request loop can adopt the correct behavior without a full
+// rewrite: never retry a permanent error (TLS/x509, DNS NXDOMAIN, ctx cancel),
+// and never retry a non-idempotent verb (POST/PATCH) — a mid-flight failure may
+// already have committed the write. A clean 429/5xx HTTP *response* is a
+// separate, method-independent decision (the server rejected before acting).
+func ShouldRetryNetwork(method string, err error) bool {
+	if err == nil || isPermanent(err) {
+		return false
+	}
+	return idempotent(method)
+}
+
 // idempotent reports whether method is safe to retry on a network failure.
 func idempotent(method string) bool {
 	switch method {
