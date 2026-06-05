@@ -47,9 +47,16 @@ func Load(path string) (*File, error) {
 	return f, nil
 }
 
-// Save writes f to path atomically: encode to a temp file in the same dir (so
-// os.Rename stays on one filesystem), fsync, then rename over the target.
-func Save(path string, f *File) error {
+// Save writes the shared File shape to path atomically. Tools that keep their
+// own config struct should call SaveTOML directly.
+func Save(path string, f *File) error { return SaveTOML(path, f) }
+
+// SaveTOML writes v as TOML to path atomically: encode to a temp file in the
+// same dir (so os.Rename stays on one filesystem), fsync, then rename over the
+// target. An interrupted or failed encode therefore never corrupts a
+// config.toml that already holds credentials. Accepts any struct, so a tool can
+// keep its own config shape and still get the atomic-write guarantee.
+func SaveTOML(path string, v any) error {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
@@ -65,7 +72,7 @@ func Save(path string, f *File) error {
 		_ = tmp.Close()
 		return err
 	}
-	if err := toml.NewEncoder(tmp).Encode(f); err != nil {
+	if err := toml.NewEncoder(tmp).Encode(v); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("encode config: %w", err)
 	}
